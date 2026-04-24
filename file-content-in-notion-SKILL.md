@@ -1,15 +1,16 @@
 ---
-name: file-doc-in-notion
+name: file-content-in-notion
 description: >
-  File Notion content into shared workspace databases: create a row in a `Projects.db` for a new
-  project, and/or create a row in a `Docs.db` that points to an existing page via `Source URL`,
-  with the right Project and Team relations. Use this skill whenever the user says "add this doc
-  to [project] in Notion," "file this under [project]," "link this page to [project]," "create a
-  Docs entry for this," "create a project for X in Notion," "add a project to Notion DB," or drops
-  a Notion URL and asks for it to be associated with a project. Always use this skill — the happy
-  path has several gotchas (property naming, team URL ambiguity, `userDefined:` prefix rules,
-  multi-value relation array format, `update_properties` replacing instead of appending) that the
-  skill handles.
+  File content into shared PED Notion databases. Two operations, used alone or together:
+  (A) create a new `Projects.db` row for a project, and (B) create a new `Docs.db` row that points
+  to an existing page via `Source URL` with the right Project and Team relations. Use this skill
+  whenever the user says "create a project in Notion," "add a project to [team] in Notion," "add
+  this project to the [team] team," "file this under [project]," "add this doc to [project] in
+  Notion," "link this page to [project]," "create a Docs entry for this," or drops a Notion URL
+  and asks for it to be associated with a project or team. Always use this skill — the happy path
+  has several gotchas (property naming, team URL ambiguity, hub-page-vs-Teams.db-row confusion,
+  `userDefined:` prefix rules, multi-value relation array format, `update_properties` replacing
+  instead of appending) that the skill handles.
 compatibility: "Requires Notion MCP"
 ---
 
