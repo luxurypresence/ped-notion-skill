@@ -9,9 +9,10 @@ description: >
   project, team, work items, and docs. Use this skill whenever the user says "create a project
   in Notion," "add a project to [team] in Notion," "add this project to the [team] team," "file
   this under [project]," "add this doc to [project] in Notion," "link this page to [project],"
-  "create a Docs entry for this," "create a work item," "add a work item to [project]," "assign
-  this work item to [person]," "link this work item to [milestone]," "mark this work item done,"
-  "archive this work item," "create a meeting," "log a meeting for [project]," "add a meeting to
+  "create a Docs entry for this," "create a work item," "add a work item to [project]," "add this
+  to the roadmap," "put this on the [team] roadmap," "assign this work item to [person],"
+  "link this work item to [milestone]," "mark this work item done," "archive this work item,"
+  "create a meeting," "log a meeting for [project]," "add a meeting to
   [team]," "link this meeting to [project / work item / doc]," "add attendees to [meeting],"
   "reschedule [meeting]," or drops a Notion URL and asks for it to be associated with a project,
   team, work item, or meeting. Always use this skill — the happy path has several gotchas
@@ -39,6 +40,7 @@ This skill assumes a Notion workspace with shared databases for Projects, Docs, 
 - User drops a Notion URL and names a project that already exists → skip to Part B (file the doc).
 - User asks to "create a project" or names a project that doesn't exist → Part A first (create the project), then Part B if they also dropped a doc.
 - User asks to create a work item under an existing project → skip to Part C.
+- User asks to "add something to the roadmap," "put this on the [team] roadmap," or otherwise references roadmap items → Part C. In PED, roadmap views are projections of `Work Items.db`; creating a roadmap entry means creating a work item.
 - User asks to update status / owner / milestone, mark Done, or archive an existing work item → Part C, management subsection (C.7).
 - If the project a new work item should attach to doesn't exist → Part A first, then Part C.
 - User asks to log / create a meeting (with notes, attendees, links to projects or work items) → skip to Part D.
@@ -206,7 +208,7 @@ Return the new Docs.db row URL to the user.
 
 ## Part C — Create or manage a Work Item in Work Items.db
 
-Work items are the third major node in the project-as-thin-row model — they live in `Work Items.db` and attach to a Project, a Team, and one or more Orgs. Schema is fully documented in the workspace's notion-structure reference (the `Work Items.db` section). Refer to that for the full property list; this part covers the happy paths.
+Work items are the third major node in the project-as-thin-row model — they live in `Work Items.db` and attach to a Project, a Team, and one or more Orgs. In PED, work items are what surface in **Roadmap views** (the team's Roadmap page, board / timeline / DC views). Creating a properly-attached work item is what makes it appear on the right team's roadmap. Schema is fully documented in the workspace's notion-structure reference (the `Work Items.db` section). Refer to that for the full property list; this part covers the happy paths.
 
 ### C.1 Resolve the Project URL
 
