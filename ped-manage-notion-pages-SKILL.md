@@ -175,7 +175,7 @@ Optional fields (set if there's a clear signal, otherwise skip):
 - `Org` — match the Project's `Org` values (multi-value; see gotchas)
 - `Collaborators`, `Review date`, `Date Completed`, `Date Archived`
 
-**Leave blank by default:** `AI Summary`, `File`, `Initiative(s)`, `Work Items`, `Meetings`, `Verification`.
+**Leave blank by default:** `File`, `Initiative(s)`, `Work Items`, `Meetings`, `Verification`.
 
 ### B.5 Create the row
 
@@ -200,7 +200,34 @@ notion-create-pages
       icon: "<emoji if the source page has one>"
 ```
 
-Leave `content` unset (blank page body). The Source URL carries readers to the real content.
+Leave `content` unset on the create call. The body is populated in B.6.
+
+### B.6 Populate `AI Summary` and body link (source-of-truth rows only)
+
+**Trigger:** Apply this step only when the Docs.db row is a thin pointer to a separate source-of-truth page (the normal Part B case — Source URL is set and the body's purpose is to redirect readers to it). Skip this step if the Docs.db row *is* the source of truth itself (content lives on the row, no Source URL, or Source URL is a version-history breadcrumb only).
+
+Two follow-ups after the row is created:
+
+1. **Set `AI Summary`** to a paragraph (3–6 sentences) summarizing what the source document is, who it's for, what it covers, and its status (e.g., "supersedes X," "current source of truth for Y"). This is the field Notion surfaces in list views and search — keep it dense and skimmable, not marketing copy. Use `notion-update-page` with `command: "update_properties"`:
+   ```
+   notion-update-page
+     page_id: "<new Docs.db row ID>"
+     command: "update_properties"
+     properties:
+       AI Summary: "<paragraph summary>"
+   ```
+
+2. **Set the body to a single highly-visible link to the source.** The body should contain only a prominent link pointing at the Source URL — no summary duplication (that lives in `AI Summary`), no index/preamble text. A large heading with an icon works well:
+   ```
+   notion-update-page
+     page_id: "<new Docs.db row ID>"
+     command: "replace_content"
+     new_str: "# 📄 [Open the full document](<Source URL>)"
+   ```
+
+**Why two fields instead of one:** `AI Summary` is the scannable surface (visible in DB views and search highlights without opening the page). The body is for readers who open the row — they should land on a one-click path to the actual content, not a second summary to read past. Putting the summary in the body too makes the row feel like the canonical doc when it isn't.
+
+**When modifying an existing Docs.db row** (not just creating), apply the same two-field pattern if the row is a source-of-truth pointer. Fetch existing `AI Summary` and body first to avoid overwriting meaningful content.
 
 Return the new Docs.db row URL to the user.
 

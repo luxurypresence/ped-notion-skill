@@ -15,6 +15,18 @@ PMs (and engineers / designers / EMs) at Luxury Presence whose AI assistant alre
 
 If your AI doesn't have the Notion MCP yet, set that up first — neither file does anything without it.
 
+## Two patterns for Docs.db rows
+
+PED uses `Docs.db` for two subtly different things. The skill handles both, but the distinction matters when you're the one deciding what to do:
+
+1. **Docs.db row = the source of truth.** The document's content lives on the Docs.db row itself. You open the row and you're reading the doc. Status, owner, team, project relations all hang off that same page. No `Source URL`, or `Source URL` only points to a superseded predecessor (version-history breadcrumb). This is the default for most team docs created fresh in Notion.
+
+2. **Docs.db row = a thin pointer to a source-of-truth page elsewhere.** The real content lives on a separate Notion page (or, in some cases, an external URL). The Docs.db row exists so the doc shows up in the team's DB views, search, and relation graphs — but its job is to redirect readers to the actual source. This is the pattern when you're filing an *already-existing* page into the team's DB, or when you want the content page to be a clean deliverable (shareable, owned separately) while still tracking it through PED's shared DBs.
+
+The skill's Part B ("File a Doc into Docs.db") produces pattern 2 by default: it sets `Source URL`, populates `AI Summary` with a scannable description, and puts a single prominent link in the body pointing at the source. If you're producing pattern 1 instead (the row *is* the canonical doc), skip the body-as-pointer step and let the content itself live on the row.
+
+When asked to "add this document to Notion" without an existing source page, the skill's happy path is: create the content page first, then create a Docs.db row pointing at it (pattern 2). This keeps the authoritative content on a clean, shareable page while the Docs.db row handles discovery and relations.
+
 ## Adding this to your local workspace
 
 The intended pattern is to clone this repo into your workspace as a tool, then point your AI at it.
