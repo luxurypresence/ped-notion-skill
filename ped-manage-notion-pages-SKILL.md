@@ -1,5 +1,5 @@
 ---
-name: file-content-in-notion
+name: ped-manage-notion-pages
 description: >
   File content into shared PED Notion databases. Four operations, used alone or together:
   (A) create a new `Projects.db` row for a project, (B) create a new `Docs.db` row that points
