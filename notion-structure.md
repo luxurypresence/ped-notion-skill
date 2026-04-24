@@ -4,7 +4,11 @@ Reference for how documentation, projects, and work are structured across PED's 
 
 **Notion is the source of truth.** This doc explains the *generic structure* (shells, shared DBs, relations). For specific team or project URLs, query Notion — do not hardcode them here.
 
-Analyzed: 2026-04-15 · Last refreshed: 2026-04-21
+Analyzed: 2026-04-15 · Last refreshed: 2026-04-23
+
+> **Reading vs. writing.** This doc is the *read-side* reference — schema, relations, navigation. For the *write-side* (creating or managing rows in `Projects.db`, `Docs.db`, `Work Items.db`, `Meetings.db`), follow `ped-manage-notion-pages-SKILL.md` in this same folder. It encodes the create-and-manage happy paths plus the property-naming gotchas.
+
+> **Collection IDs are a snapshot.** The IDs listed in the shared-DB table below were correct as of the refresh date. They rarely change, but if a `notion-fetch` response returns a different `parent-data-source url="collection://..."`, **trust the live response** and update this doc. Never hardcode IDs in skills or queries — discover them live.
 
 ---
 
@@ -255,6 +259,16 @@ All databases are shared globally and filtered per-team via the `Team(s)` relati
 
 ---
 
+### 5. Initiatives.db & Milestones.db — schema gap
+
+These two databases appear in the shared-DB table and as relation targets across Docs / Work Items / Projects / Meetings, but their **internal schemas are not yet documented here**. If you need to read or query them, fetch a known row first to capture the property list, then add a section above. If you need to *write* to them, follow the same pattern as the documented DBs but **verify property names live** — none of the gotchas in `ped-manage-notion-pages-SKILL.md` have been validated against these two yet.
+
+Collection IDs:
+- Initiatives.db: `collection://a3d69c52-23e8-8232-8e4e-072ddcdc857a`
+- Milestones.db: `collection://dcd17c47-129e-46b3-8035-3a8f92c0653d`
+
+---
+
 ## Key design patterns
 
 ### Team filtering
@@ -265,7 +279,7 @@ Team(s) relation_contains <team-page-url>
 where `<team-page-url>` is the team's row in Teams.db. Resolve this by fetching from Notion — don't hardcode.
 
 ### Cross-database relations
-All 4 primary databases are interconnected:
+The shared databases are extensively interconnected:
 - Docs ↔ Work Items (bilateral)
 - Docs ↔ Projects (bilateral)
 - Docs ↔ Meetings (bilateral)
@@ -274,7 +288,9 @@ All 4 primary databases are interconnected:
 - Projects ↔ Meetings (bilateral)
 - Work Items ↔ Milestones
 - Projects ↔ Milestones
-- All → Initiatives (one-directional rollup/relation)
+- Docs / Work Items / Projects / Meetings → Initiatives (relation; directionality from Initiatives.db not yet verified — see schema gap below)
+
+**Property-naming subtlety.** The same logical relation can have *different* property names across databases. Most notably: the project relation is `Project(s)` (parens) on Docs.db and Work Items.db, but `Projects` (plural, no parens) on Meetings.db. Similarly `Meeting(s)` on Work Items.db vs `Meetings` on Projects.db / Docs.db. Property names are case- and punctuation-sensitive when writing — always check the relevant schema table above (or fetch a sibling row) before passing properties to `notion-create-pages` / `notion-update-page`.
 
 ### Project-as-thin-row
 Project and team pages are **metadata rows**, not content pages. Their body is usually blank. The actual writing lives in related Docs. If you open a project page and see nothing, open its `Docs` relation — that's where the content is.
