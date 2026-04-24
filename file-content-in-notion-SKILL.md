@@ -1,41 +1,48 @@
 ---
 name: file-content-in-notion
 description: >
-  File content into shared PED Notion databases. Two operations, used alone or together:
-  (A) create a new `Projects.db` row for a project, and (B) create a new `Docs.db` row that points
-  to an existing page via `Source URL` with the right Project and Team relations. Use this skill
+  File content into shared PED Notion databases. Three operations, used alone or together:
+  (A) create a new `Projects.db` row for a project, (B) create a new `Docs.db` row that points
+  to an existing page via `Source URL` with the right Project and Team relations, and
+  (C) create or manage a `Work Items.db` row attached to a project, team, and orgs. Use this skill
   whenever the user says "create a project in Notion," "add a project to [team] in Notion," "add
   this project to the [team] team," "file this under [project]," "add this doc to [project] in
-  Notion," "link this page to [project]," "create a Docs entry for this," or drops a Notion URL
-  and asks for it to be associated with a project or team. Always use this skill — the happy path
-  has several gotchas (property naming, team URL ambiguity, hub-page-vs-Teams.db-row confusion,
-  `userDefined:` prefix rules, multi-value relation array format, `update_properties` replacing
-  instead of appending) that the skill handles.
+  Notion," "link this page to [project]," "create a Docs entry for this," "create a work item,"
+  "add a work item to [project]," "assign this work item to [person]," "link this work item to
+  [milestone]," "mark this work item done," "archive this work item," or drops a Notion URL and
+  asks for it to be associated with a project, team, or work item. Always use this skill — the
+  happy path has several gotchas (property naming, team URL ambiguity, hub-page-vs-Teams.db-row
+  confusion, `userDefined:` prefix rules, multi-value relation array format, `update_properties`
+  replacing instead of appending) that the skill handles.
 compatibility: "Requires Notion MCP"
 ---
 
 # File Content into Shared Notion Databases
 
-Two related operations, often done together:
+Three related operations, often done together:
 
 - **A. Create a new `Projects.db` row** for a project that doesn't exist yet.
 - **B. Create a new `Docs.db` row** that points to an existing page via `Source URL`, with relations to a Project and Team.
+- **C. Create or manage a `Work Items.db` row** attached to a project, team, and orgs (covers create plus common follow-up updates: status change, owner reassignment, milestone linking, mark Done, archive).
 
 **Do NOT move or duplicate the original page content** for operation B. The Docs.db row is a thin metadata record; the real content stays where it already lives. This is the "project-as-thin-row" pattern applied to docs: the DB row is structure; the page it points to is content.
 
-This skill assumes a Notion workspace with shared databases for Projects, Docs, and Teams that use relation properties to connect them. Collection IDs, team URLs, org URLs, and user IDs are **not baked into this skill** — discover them from the live workspace (see "Resolving IDs" below).
+This skill assumes a Notion workspace with shared databases for Projects, Docs, Work Items, and Teams that use relation properties to connect them. Collection IDs, team URLs, org URLs, and user IDs are **not baked into this skill** — discover them from the live workspace (see "Resolving IDs" below).
 
 ## When to do which
 
 - User drops a Notion URL and names a project that already exists → skip to Part B (file the doc).
 - User asks to "create a project" or names a project that doesn't exist → Part A first (create the project), then Part B if they also dropped a doc.
+- User asks to create a work item under an existing project → skip to Part C.
+- User asks to update status / owner / milestone, mark Done, or archive an existing work item → Part C, management subsection (C.7).
+- If the project a new work item should attach to doesn't exist → Part A first, then Part C.
 - Before creating a project, **always confirm it doesn't already exist** by searching `Projects.db`.
 
 ## Resolving IDs (do this every time)
 
 Do not hardcode collection IDs, team URLs, org URLs, or user IDs. Discover them live:
 
-1. **Find the Projects.db / Docs.db / Teams.db collection IDs.** Fetch any known project, doc, or team page with `notion-fetch`. The response's `parent-data-source url="collection://..."` tag gives the collection ID. Alternatively, your workspace may have a reference doc listing these — check the tool's own documentation if available.
+1. **Find the Projects.db / Docs.db / Work Items.db / Teams.db collection IDs.** Fetch any known project, doc, work item, or team page with `notion-fetch`. The response's `parent-data-source url="collection://..."` tag gives the collection ID. Alternatively, your workspace may have a reference doc listing these — check the tool's own documentation if available.
 2. **Find the Team URL.** Search `Teams.db` by team name with `notion-search` and the team DB's `data_source_url`. The team's row URL in Teams.db is what goes into the `Team(s)` relation — **not** a hub/shell page with the same name.
 3. **Find the Org URL(s).** The easiest way: fetch a sibling project on the same team and copy its `Org` values. Most workspaces use multiple orgs per project (often 2). Never guess Org URLs; derive them from a sibling.
 4. **Find the Owner user ID.** Default to the user running the skill. If a different owner is needed, ask the user for a mention or search users.
@@ -44,7 +51,7 @@ If any of these lookups fail, ask the user for the missing ID before proceeding.
 
 ## Common prerequisites
 
-For either operation, you need:
+For any of the three operations, you need:
 
 - **Team URL** (the team's row in Teams.db)
 - **Org URL(s)** (usually multi-value; copied from a sibling project)
@@ -189,6 +196,95 @@ Return the new Docs.db row URL to the user.
 
 ---
 
+## Part C — Create or manage a Work Item in Work Items.db
+
+Work items are the third major node in the project-as-thin-row model — they live in `Work Items.db` and attach to a Project, a Team, and one or more Orgs. Schema is fully documented in the workspace's notion-structure reference (the `Work Items.db` section). Refer to that for the full property list; this part covers the happy paths.
+
+### C.1 Resolve the Project URL
+
+If the user gave a URL, use it. If they gave a name, search `Projects.db`. If multiple matches, ask to disambiguate. **Never guess.** If the project doesn't exist, run Part A first, then come back here.
+
+### C.2 Resolve the Team URL
+
+See prerequisites. The Team URL must be the project's team — confirm by fetching the resolved Project page and reading its `Team(s)` value.
+
+### C.3 Gather fields
+
+Required:
+
+| Field | Value source |
+|---|---|
+| `Name` | From user (the work item title) |
+| `Status` | Default `To Do` for new items — confirm valid values via a sibling work item on the same project (status labels can drift; see gotchas) |
+| `Owner(s)` | User mention. Default to the current user unless told otherwise |
+| `Project(s)` | From C.1 (full Notion page URL) |
+| `Team(s)` | From C.2 (full Notion page URL) |
+| `Org` | Multi-value. **Copy from the resolved Project's `Org` values** — do not guess |
+
+Optional (set if there's a clear signal, otherwise skip):
+
+- `Priority` (select)
+- `Delivery Cycle` (select)
+- `Date` (due date)
+- `Description` (short text)
+- `Initiatives` (relation, multi-value)
+- `Milestone` (relation, max 1)
+- `Collaborators` (person, multi-value)
+
+**Leave blank by default:** `Sub-item`, `Parent item`, `Docs`, `Meeting(s)`, `Est. Hrs.`, `Actual (hrs)`, `Date Completed`, `Date Archived`, `Place`.
+
+### C.4 Draft and confirm
+
+Show the user a table of proposed values **before** writing. Wait for confirmation.
+
+### C.5 Create the row (single-shot)
+
+`Work Items.db` accepts the multi-value `Org` JSON-array string on `notion-create-pages` — same as `Docs.db`, unlike `Projects.db`. **Do not** use the Projects.db two-step create-then-update workaround here unnecessarily.
+
+```
+notion-create-pages
+  parent:
+    type: "data_source_id"
+    data_source_id: "<Work Items.db collection ID — discover live, do not hardcode>"
+  pages:
+    - properties:
+        Name: "<from C.3>"
+        Status: "<from C.3, e.g. 'To Do'>"
+        Owner(s): "user://<UUID>"
+        Project(s): "<project page URL>"
+        Team(s): "<team page URL>"
+        Org: "[\"<org1 URL>\",\"<org2 URL>\",...]"
+```
+
+Leave `content` unset (blank page body) unless the user provided body text.
+
+### C.6 Verify and return URL
+
+Fetch the new work item page and confirm `Status`, `Project(s)`, `Team(s)`, and the full `Org` array are present. Return the URL to the user.
+
+### C.7 Common follow-up management operations
+
+All updates use `notion-update-page` with `command: "update_properties"`.
+
+- **Status change** — `properties: { Status: "<new status>" }`
+- **Reassign owner** — `properties: { Owner(s): "user://<new UUID>" }`
+- **Link to milestone** — `properties: { Milestone: "<milestone page URL>" }` (single-value relation; plain URL string)
+- **Mark Done** — `properties: { Status: "Done", Date Completed: "<today's date>" }`
+- **Archive** — `properties: { Status: "Archive", Date Archived: "<today's date>" }`
+- **Multi-value field updates** (`Org`, `Initiatives`, `Docs`, `Meeting(s)`, `Collaborators`) — `update_properties` REPLACES, never appends. Always pass the **full** array including any existing values you want to keep.
+
+For any update, fetch the work item first to confirm current values (especially before touching multi-value fields).
+
+### C.8 Out of scope for v1 (flagged for later)
+
+- Subtask flow (`Parent item` / `Sub-item` self-relation)
+- Bulk reassignment across many work items in one call
+- Cross-project moves (changing `Project(s)` on an existing item)
+
+If a request needs any of these, treat it as a Part C extension — don't invent a parallel skill.
+
+---
+
 ## Property-naming gotchas
 
 Known from hitting them manually:
@@ -201,6 +297,7 @@ Known from hitting them manually:
 - **`update_properties` REPLACES, never appends.** Passing a single URL to a multi-value field overwrites existing values. Always pass the full array on updates.
 - **`Owner(s)` values are user mentions** in the format `user://UUID` (no `mention-user` wrapper when passing to `notion-create-pages`).
 - **Status is a `status` property, not a `select`.** Valid values and capitalization can differ between databases in the same workspace (e.g., `In progress` in one DB vs. `In Progress` in another). Check a sibling row if unsure.
+- **Work Items.db accepts multi-value `Org` on `notion-create-pages`** (single-shot, JSON-array string) — same as Docs.db, unlike Projects.db. Don't apply the Projects.db create-then-update workaround unnecessarily. If a future workspace ever rejects it, fall back to the two-step pattern from A.4.
 
 ---
 
@@ -238,3 +335,31 @@ User says: "Add a project to Notion for [Project Name], I don't think it exists.
 - For Projects.db, use the create-then-update workaround for multi-value Org (A.4).
 - For Docs.db, the JSON-array typically works on create (B.5) — if it doesn't, fall back to the two-step workaround.
 - `update_properties` replaces, so always pass the full array.
+
+### Example 3 — Create a work item under an existing project (Part C, create)
+
+User says: "Add a work item called [X] to the [Y] project on the [Z] team."
+
+- **C.1:** Resolve the project URL (search Projects.db if only a name was given).
+- **C.2:** Confirm the team URL matches the project's `Team(s)`.
+- **C.3:** Copy the project's `Org` array (often 2–3 URLs); default `Status="To Do"`, `Owner(s)`=current user.
+- **C.4:** Show the proposed table and wait for confirmation.
+- **C.5:** Single-shot `notion-create-pages` with the multi-value `Org` JSON-array string. Do NOT use the Projects.db two-step workaround — Work Items.db accepts multi-value Org on create.
+- **C.6:** Fetch the new work item, verify all Orgs landed, return URL.
+
+### Example 4 — Manage an existing work item (Part C, management)
+
+User says: "Mark work item [W] as done." or "Reassign work item [W] to [person]." or "Archive work item [W]."
+
+- Fetch [W] first to confirm current `Status` and any multi-value fields you might touch.
+- `notion-update-page` with `command: "update_properties"`:
+  - Mark Done → `{ Status: "Done", Date Completed: "<today>" }`
+  - Reassign → `{ Owner(s): "user://<new UUID>" }`
+  - Archive → `{ Status: "Archive", Date Archived: "<today>" }`
+- For any multi-value field update, always pass the full array — `update_properties` replaces, never appends.
+
+**Key learnings baked into Part C:**
+- Always copy `Org` from the resolved Project — never guess.
+- Work Items.db is single-shot on create for multi-value `Org` (unlike Projects.db).
+- Status labels can drift between databases — check a sibling work item if unsure of valid values.
+- Subtasks (Parent item / Sub-item) and bulk operations are out of scope for v1.
