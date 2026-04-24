@@ -1,33 +1,38 @@
 ---
 name: file-content-in-notion
 description: >
-  File content into shared PED Notion databases. Three operations, used alone or together:
+  File content into shared PED Notion databases. Four operations, used alone or together:
   (A) create a new `Projects.db` row for a project, (B) create a new `Docs.db` row that points
-  to an existing page via `Source URL` with the right Project and Team relations, and
-  (C) create or manage a `Work Items.db` row attached to a project, team, and orgs. Use this skill
-  whenever the user says "create a project in Notion," "add a project to [team] in Notion," "add
-  this project to the [team] team," "file this under [project]," "add this doc to [project] in
-  Notion," "link this page to [project]," "create a Docs entry for this," "create a work item,"
-  "add a work item to [project]," "assign this work item to [person]," "link this work item to
-  [milestone]," "mark this work item done," "archive this work item," or drops a Notion URL and
-  asks for it to be associated with a project, team, or work item. Always use this skill — the
-  happy path has several gotchas (property naming, team URL ambiguity, hub-page-vs-Teams.db-row
-  confusion, `userDefined:` prefix rules, multi-value relation array format, `update_properties`
-  replacing instead of appending) that the skill handles.
+  to an existing page via `Source URL` with the right Project and Team relations,
+  (C) create or manage a `Work Items.db` row attached to a project, team, and orgs, and
+  (D) create or manage a `Meetings.db` row (meeting notes, attendees, decisions) linked to a
+  project, team, work items, and docs. Use this skill whenever the user says "create a project
+  in Notion," "add a project to [team] in Notion," "add this project to the [team] team," "file
+  this under [project]," "add this doc to [project] in Notion," "link this page to [project],"
+  "create a Docs entry for this," "create a work item," "add a work item to [project]," "assign
+  this work item to [person]," "link this work item to [milestone]," "mark this work item done,"
+  "archive this work item," "create a meeting," "log a meeting for [project]," "add a meeting to
+  [team]," "link this meeting to [project / work item / doc]," "add attendees to [meeting],"
+  "reschedule [meeting]," or drops a Notion URL and asks for it to be associated with a project,
+  team, work item, or meeting. Always use this skill — the happy path has several gotchas
+  (property naming, team URL ambiguity, hub-page-vs-Teams.db-row confusion, `userDefined:` prefix
+  rules, multi-value relation array format, `update_properties` replacing instead of appending)
+  that the skill handles.
 compatibility: "Requires Notion MCP"
 ---
 
 # File Content into Shared Notion Databases
 
-Three related operations, often done together:
+Four related operations, often done together:
 
 - **A. Create a new `Projects.db` row** for a project that doesn't exist yet.
 - **B. Create a new `Docs.db` row** that points to an existing page via `Source URL`, with relations to a Project and Team.
 - **C. Create or manage a `Work Items.db` row** attached to a project, team, and orgs (covers create plus common follow-up updates: status change, owner reassignment, milestone linking, mark Done, archive).
+- **D. Create or manage a `Meetings.db` row** for meeting notes / attendees / decisions, linked to a team, optionally to projects, work items, docs, and initiatives (covers create plus common follow-up updates: add/remove attendees, reschedule, link to additional projects or work items).
 
 **Do NOT move or duplicate the original page content** for operation B. The Docs.db row is a thin metadata record; the real content stays where it already lives. This is the "project-as-thin-row" pattern applied to docs: the DB row is structure; the page it points to is content.
 
-This skill assumes a Notion workspace with shared databases for Projects, Docs, Work Items, and Teams that use relation properties to connect them. Collection IDs, team URLs, org URLs, and user IDs are **not baked into this skill** — discover them from the live workspace (see "Resolving IDs" below).
+This skill assumes a Notion workspace with shared databases for Projects, Docs, Work Items, Meetings, and Teams that use relation properties to connect them. Collection IDs, team URLs, org URLs, and user IDs are **not baked into this skill** — discover them from the live workspace (see "Resolving IDs" below).
 
 ## When to do which
 
@@ -36,13 +41,16 @@ This skill assumes a Notion workspace with shared databases for Projects, Docs, 
 - User asks to create a work item under an existing project → skip to Part C.
 - User asks to update status / owner / milestone, mark Done, or archive an existing work item → Part C, management subsection (C.7).
 - If the project a new work item should attach to doesn't exist → Part A first, then Part C.
+- User asks to log / create a meeting (with notes, attendees, links to projects or work items) → skip to Part D.
+- User asks to add attendees, reschedule, or link an existing meeting to more projects / work items / docs → Part D, management subsection (D.7).
+- For "find meetings about X" or "list meetings on team Y," prefer the dedicated `notion-query-meeting-notes` MCP tool before falling back to direct fetches.
 - Before creating a project, **always confirm it doesn't already exist** by searching `Projects.db`.
 
 ## Resolving IDs (do this every time)
 
 Do not hardcode collection IDs, team URLs, org URLs, or user IDs. Discover them live:
 
-1. **Find the Projects.db / Docs.db / Work Items.db / Teams.db collection IDs.** Fetch any known project, doc, work item, or team page with `notion-fetch`. The response's `parent-data-source url="collection://..."` tag gives the collection ID. Alternatively, your workspace may have a reference doc listing these — check the tool's own documentation if available.
+1. **Find the Projects.db / Docs.db / Work Items.db / Meetings.db / Teams.db collection IDs.** Fetch any known project, doc, work item, meeting, or team page with `notion-fetch`. The response's `parent-data-source url="collection://..."` tag gives the collection ID. Alternatively, your workspace may have a reference doc listing these — check the tool's own documentation if available.
 2. **Find the Team URL.** Search `Teams.db` by team name with `notion-search` and the team DB's `data_source_url`. The team's row URL in Teams.db is what goes into the `Team(s)` relation — **not** a hub/shell page with the same name.
 3. **Find the Org URL(s).** The easiest way: fetch a sibling project on the same team and copy its `Org` values. Most workspaces use multiple orgs per project (often 2). Never guess Org URLs; derive them from a sibling.
 4. **Find the Owner user ID.** Default to the user running the skill. If a different owner is needed, ask the user for a mention or search users.
@@ -51,11 +59,11 @@ If any of these lookups fail, ask the user for the missing ID before proceeding.
 
 ## Common prerequisites
 
-For any of the three operations, you need:
+For any of the four operations, you need:
 
 - **Team URL** (the team's row in Teams.db)
-- **Org URL(s)** (usually multi-value; copied from a sibling project)
-- **Owner(s)** (user mention in `user://UUID` format)
+- **Org URL(s)** (usually multi-value; copied from a sibling project — note: Meetings.db does not require Org)
+- **Owner(s)** / **Attendees** (user mentions in `user://UUID` format — Parts A/B/C use `Owner(s)` single-person; Part D uses `Meeting Attendees` multi-person)
 
 Always ask the user to confirm the team if it's ambiguous (e.g., a team called "X" vs. a group page also called "X"). Team names shared with hub/group pages are a common source of errors.
 
@@ -285,6 +293,108 @@ If a request needs any of these, treat it as a Part C extension — don't invent
 
 ---
 
+## Part D — Create or manage a Meeting in Meetings.db
+
+Meetings live in `Meetings.db` and link laterally across the workspace — to a Team (required), and optionally to Projects, Work Items, Docs, and Initiatives. Schema is fully documented in the workspace's notion-structure reference (the `Meetings.db` section). Refer to that for the full property list; this part covers the happy paths.
+
+**Important shape differences from Parts A/B/C:**
+- No `Status`, no `Owner(s)`, no `Priority`, no `Delivery Cycle`. Meetings are events, not workflow items.
+- Attendees use `Meeting Attendees` (multi-value person), not `Owner(s)`.
+- The project relation is **`Projects`** (plural, no parentheses) — different from Work Items' `Project(s)`. Property names are case- and punctuation-sensitive; don't substitute.
+- `Org` is optional on Meetings.db (unlike Parts A and C, where it's required).
+- For "find / list meetings about X," prefer `notion-query-meeting-notes` over hand-rolled queries.
+
+### D.1 Resolve the Team URL
+
+See prerequisites. Every meeting belongs to at least one team. Confirm with the user if ambiguous.
+
+### D.2 Resolve any related Project / Work Item / Doc / Initiative URLs (optional)
+
+If the user named a project, search `Projects.db` (as in B.2 / C.1). If they named a work item, search `Work Items.db` similarly. Same disambiguate-or-ask rule. None of these are required — a meeting can be team-only.
+
+### D.3 Gather fields
+
+Required:
+
+| Field | Value source |
+|---|---|
+| `Name` | From user (the meeting title) |
+| `Date` | Meeting date/time. Format: ISO date (`2026-04-23`) or full datetime if known |
+| `Team(s)` | From D.1 (full Notion page URL) |
+
+Recommended:
+
+| Field | Value source |
+|---|---|
+| `Type` | Select. Valid values: `Product Review`, `Team Meeting`, `Project Meeting`. Default `Team Meeting` if generic; `Project Meeting` if linked to a specific project |
+| `Meeting Attendees` | Multi-value person. Default to the current user; ask for additional attendees |
+
+Optional:
+
+- `Collaborators` (multi-value person — distinct from Attendees; use for people involved but not present)
+- `Projects` (plural relation, multi-value)
+- `Initiatives` (relation, multi-value)
+- `Work Items` (relation, multi-value)
+- `Docs` (relation, multi-value)
+- `Org` (relation, multi-value — copy from a related Project if any)
+
+**Leave blank by default:** `Access` (formula, auto-computed), `Visibility` (button), `Place` (only if it's a physical/recurring location).
+
+### D.4 Draft and confirm
+
+Show the user a table of proposed values **before** writing. Wait for confirmation. Always confirm `Date`, `Type`, and the `Meeting Attendees` list explicitly — these are the most common things to get wrong.
+
+### D.5 Create the row (single-shot)
+
+`Meetings.db` accepts multi-value relations on `notion-create-pages` in JSON-array string form (same shape as Docs.db / Work Items.db).
+
+```
+notion-create-pages
+  parent:
+    type: "data_source_id"
+    data_source_id: "<Meetings.db collection ID — discover live, do not hardcode>"
+  pages:
+    - properties:
+        Name: "<from D.3>"
+        Type: "<from D.3, e.g. 'Project Meeting'>"
+        Date: "<ISO date or datetime>"
+        Team(s): "<team page URL>"
+        Meeting Attendees: "[\"user://<UUID1>\",\"user://<UUID2>\"]"
+        Projects: "[\"<project page URL>\"]"          # optional, multi-value
+        Work Items: "[\"<work item URL>\"]"            # optional, multi-value
+        Docs: "[\"<doc URL>\"]"                         # optional, multi-value
+        Org: "[\"<org URL>\"]"                          # optional, multi-value
+```
+
+If notes content is provided, pass it as the `content` field (Notion-flavored Markdown). Otherwise leave `content` unset — the meeting can be filled in later from Granola or other notes capture.
+
+### D.6 Verify and return URL
+
+Fetch the new meeting page and confirm `Date`, `Team(s)`, `Meeting Attendees`, and any relations landed correctly. Return the URL to the user.
+
+### D.7 Common follow-up management operations
+
+All updates use `notion-update-page` with `command: "update_properties"`.
+
+- **Add attendees** — fetch first, then `properties: { Meeting Attendees: "[\"<existing user URLs>\",\"<new user URL>\"]" }` (full array; `update_properties` REPLACES).
+- **Remove an attendee** — fetch, drop the URL, pass the remaining full array.
+- **Reschedule** — `properties: { Date: "<new ISO date>" }`.
+- **Link to additional projects / work items / docs / initiatives** — fetch the current relation array, append, pass the full array. Same replace-not-append rule applies.
+- **Change `Type`** — `properties: { Type: "<new select value>" }`.
+- **Append meeting notes to the body** — use `notion-update-page` with the appropriate body-append command (not `update_properties`).
+
+For any update touching a multi-value field, fetch the meeting first to confirm current values.
+
+### D.8 Out of scope for v1 (flagged for later)
+
+- Recurring meeting series (creating N meetings from one template)
+- Auto-generating meeting notes from external sources (Granola transcripts, calendar invites) — that belongs in a separate ingestion skill, not this one
+- Bulk attendee changes across many meetings
+
+If a request needs any of these, treat it as a Part D extension — don't invent a parallel skill.
+
+---
+
 ## Property-naming gotchas
 
 Known from hitting them manually:
@@ -298,6 +408,9 @@ Known from hitting them manually:
 - **`Owner(s)` values are user mentions** in the format `user://UUID` (no `mention-user` wrapper when passing to `notion-create-pages`).
 - **Status is a `status` property, not a `select`.** Valid values and capitalization can differ between databases in the same workspace (e.g., `In progress` in one DB vs. `In Progress` in another). Check a sibling row if unsure.
 - **Work Items.db accepts multi-value `Org` on `notion-create-pages`** (single-shot, JSON-array string) — same as Docs.db, unlike Projects.db. Don't apply the Projects.db create-then-update workaround unnecessarily. If a future workspace ever rejects it, fall back to the two-step pattern from A.4.
+- **Meetings.db relation property names differ subtly from other DBs.** The project relation on Meetings.db is **`Projects`** (plural, no parens), not `Project(s)`. Don't blindly copy property names from Work Items / Docs. Always confirm against a sibling row or the schema reference.
+- **Meetings have no `Status` or `Owner(s)`.** Don't try to set them — passing those properties on Meetings.db will fail (or silently no-op) because the schema doesn't define them. Use `Meeting Attendees` (multi-value person) for ownership semantics instead.
+- **`Meeting Attendees` is multi-value person**, passed as a JSON-array of `user://UUID` strings. Single-attendee values still need the array wrapper.
 
 ---
 
@@ -363,3 +476,32 @@ User says: "Mark work item [W] as done." or "Reassign work item [W] to [person].
 - Work Items.db is single-shot on create for multi-value `Org` (unlike Projects.db).
 - Status labels can drift between databases — check a sibling work item if unsure of valid values.
 - Subtasks (Parent item / Sub-item) and bulk operations are out of scope for v1.
+
+### Example 5 — Create a meeting linked to a project and work item (Part D, create)
+
+User says: "Log a meeting called [X] on [date] for the [Y] project. Attendees: me and [person]. Link it to work item [W]."
+
+- **D.1:** Resolve the team URL from the project's `Team(s)`.
+- **D.2:** Resolve the project URL (search Projects.db if only a name was given) and the work item URL.
+- **D.3:** Build attendees array (current user + named person → `user://UUID` mentions). Default `Type="Project Meeting"` because it's project-scoped.
+- **D.4:** Show the proposed table — confirm Date, Type, Attendees explicitly.
+- **D.5:** Single-shot `notion-create-pages` with `Projects` (plural!), `Work Items`, and `Meeting Attendees` as JSON-array strings.
+- **D.6:** Fetch the new meeting, verify Date / Team(s) / Attendees / relations, return URL.
+
+### Example 6 — Manage an existing meeting (Part D, management)
+
+User says: "Add [person] to meeting [M]." or "Reschedule meeting [M] to [new date]." or "Link meeting [M] to project [P]."
+
+- Fetch [M] first to capture current `Meeting Attendees` and any relation arrays you'll touch.
+- `notion-update-page` with `command: "update_properties"`:
+  - Add attendee → `{ Meeting Attendees: "[\"<existing>\",\"<new>\"]" }` (full array)
+  - Reschedule → `{ Date: "<new ISO date>" }`
+  - Link to additional project → `{ Projects: "[\"<existing project URLs>\",\"<new project URL>\"]" }`
+- For any multi-value update, always pass the full array including existing values — `update_properties` replaces.
+
+**Key learnings baked into Part D:**
+- Meetings have no `Status` or `Owner(s)` — use `Meeting Attendees` instead.
+- The project relation on Meetings.db is `Projects` (plural, no parens) — different from Work Items' `Project(s)`.
+- `Org` is optional on Meetings.db (unlike Projects/Work Items where it's required).
+- For "find/list meetings" requests, prefer `notion-query-meeting-notes` over hand-rolled queries.
+- Recurring series and Granola-driven note ingestion are out of scope for v1.
